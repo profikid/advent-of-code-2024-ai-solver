@@ -1,0 +1,21 @@
+{
+  "name": "puppeteeraoc",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "dotenv": "^16.4.5",
+    "puppeteer": "^23.9.0",
+    "turndown": "^7.2.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
