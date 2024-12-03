@@ -4,17 +4,43 @@ import { useTools } from './useTools.js';
 import fs from 'fs';
 import chalk from 'chalk';
 import ora from 'ora';
+import path from 'path';
 import puppeteer from 'puppeteer';
 import TurndownService from 'turndown';
 import dotenv from 'dotenv';
-import path from 'path';
+import readline from 'readline';
 
 // Load environment variables
 dotenv.config();
 
-const day = 2;
-const part = 1;
 const spinner = ora();
+
+// Create readline interface
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+// Promisify readline question
+const question = (query) => new Promise((resolve) => rl.question(query, resolve));
+
+async function promptForDayAndPart() {
+  const day = await question(chalk.blue('Enter the day number (1-25): '));
+  if (isNaN(day) || day < 1 || day > 25) {
+    console.log(chalk.red('Invalid day number. Please enter a number between 1 and 25.'));
+    rl.close();
+    process.exit(1);
+  }
+
+  const part = await question(chalk.blue('Enter the part number (1 or 2): '));
+  if (part !== '1' && part !== '2') {
+    console.log(chalk.red('Invalid part number. Please enter 1 or 2.'));
+    rl.close();
+    process.exit(1);
+  }
+
+  return { day: parseInt(day), part: parseInt(part) };
+}
 
 // Create solutions directory if it doesn't exist
 const solutionsDir = path.join(process.cwd(), 'solutions');
@@ -22,25 +48,16 @@ if (!fs.existsSync(solutionsDir)) {
   fs.mkdirSync(solutionsDir, { recursive: true });
 }
 
-// Define paths for day's files
-const dayDir = path.join(solutionsDir, `day${day}`);
-if (!fs.existsSync(dayDir)) {
-  fs.mkdirSync(dayDir, { recursive: true });
-}
+async function extractPuzzleContent(day, part, paths) {
+  // Check if files already exist
+  if (fs.existsSync(paths.input) && fs.existsSync(paths.puzzle)) {
+    console.log(chalk.yellow('Input and puzzle files already exist, skipping extraction...'));
+    return {
+      input: fs.readFileSync(paths.input, 'utf-8'),
+      puzzle: fs.readFileSync(paths.puzzle, 'utf-8')
+    };
+  }
 
-const paths = {
-  input: path.join(dayDir, 'input.txt'),
-  puzzle: path.join(dayDir, 'puzzle.md'),
-  screenshot: path.join(dayDir, 'puzzle.png'),
-  test: path.join(dayDir, 'test.js'),
-  solution: path.join(dayDir, 'solution.js'),
-  solve: path.join(dayDir, 'solve.js'),
-  output: path.join(dayDir, 'output.txt')
-};
-
-console.log(chalk.blue.bold(`🎄 Advent of Code - Day ${day}, Part ${part}`));
-
-async function extractPuzzleContent() {
   try {
     spinner.start('Launching browser...');
     const browser = await puppeteer.launch({
@@ -68,34 +85,35 @@ async function extractPuzzleContent() {
     spinner.start('Fetching puzzle input...');
     await page.goto(`https://adventofcode.com/2024/day/${day}/input`, { waitUntil: 'networkidle2' });
     const inputText = await page.$eval('pre', el => el.textContent);
-    fs.writeFileSync(paths.input, inputText);
-    spinner.succeed('Puzzle input saved');
+    spinner.succeed('Puzzle input fetched');
 
     // Get the puzzle description
     spinner.start('Fetching puzzle description...');
-    await page.goto(`https://adventofcode.com/2024/day/${day}`, { waitUntil: 'networkidle2' });
+    await page.goto(`https://adventofcode.com/2024/day/${day}#part${part}`, { waitUntil: 'networkidle2' });
     await page.waitForSelector('article');
-    const articleHTML = await page.$eval('article', el => el.innerHTML);
+    const articleHTML = await page.$eval('main', el => el.innerHTML);
     spinner.succeed('Puzzle description fetched');
 
     // Convert HTML to Markdown
     spinner.start('Converting puzzle description to markdown...');
     const turndownService = new TurndownService();
     const markdown = turndownService.turndown(articleHTML);
-    fs.writeFileSync(paths.puzzle, markdown);
-    spinner.succeed('Puzzle description saved');
+    spinner.succeed('Puzzle description converted');
 
-    // Take a screenshot
+    // Save the content
+    fs.writeFileSync(paths.input, inputText);
+    fs.writeFileSync(paths.puzzle, markdown);
     spinner.start('Taking screenshot...');
     await page.screenshot({ path: paths.screenshot, fullPage: true });
     spinner.succeed('Screenshot saved');
 
-    await browser.close();
-    console.log(chalk.green('\n✨ Puzzle content extracted successfully!\n'));
+    return { input: inputText, puzzle: markdown };
   } catch (error) {
     spinner.fail('Error extracting puzzle content');
     console.error(chalk.red(error));
     process.exit(1);
+  } finally {
+    // await browser.close();
   }
 }
 
@@ -107,16 +125,40 @@ async function loadFile(filepath, description) {
 }
 
 async function main() {
+  // Get day and part from user
+  const { day, part } = await promptForDayAndPart();
+  console.log(chalk.blue.bold(`\n🎄 Advent of Code - Day ${day}, Part ${part}\n`));
+
+  // Create solutions directory if it doesn't exist
+  const solutionsDir = path.join(process.cwd(), 'solutions');
+  if (!fs.existsSync(solutionsDir)) {
+    fs.mkdirSync(solutionsDir, { recursive: true });
+  }
+
+  // Define paths for day's files
+  const dayDir = path.join(solutionsDir, `day${day}`);
+  const partDir = path.join(dayDir, `part${part}`);
+  if (!fs.existsSync(partDir)) {
+    fs.mkdirSync(partDir, { recursive: true });
+  }
+
+  const paths = {
+    input: path.join(partDir, 'input.txt'),
+    puzzle: path.join(partDir, 'puzzle.md'),
+    screenshot: path.join(partDir, 'puzzle.png'),
+    test: path.join(partDir, 'test.js'),
+    solution: path.join(partDir, 'solution.js'),
+    solve: path.join(partDir, 'solve.js'),
+    output: path.join(partDir, 'output.txt')
+  };
+
   // First extract the puzzle content
   console.log(chalk.yellow('\n📥 Extracting puzzle content...\n'));
-  await extractPuzzleContent();
+  const { input, puzzle } = await extractPuzzleContent(day, part, paths);
 
   // Then load the files and solve the puzzle
   console.log(chalk.yellow('\n🚀 Starting solution generation...\n'));
   
-  const input = await loadFile(paths.input, 'puzzle input');
-  const puzzle = await loadFile(paths.puzzle, 'puzzle description');
-
   const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
@@ -147,24 +189,22 @@ async function main() {
     temperature: 0,
     system: replaceVariables(
       `You are a professional JavaScript puzzle solver. Your goal is to create a test, a solution, and solve the puzzle.
-1. {{paths.test}} should contain ALL the conditions stated in the puzzle to solve the puzzle (should test {{paths.solution}}). only use ES6 module style
-2. {{paths.solution}} should contain the actual solution based on the input. It should export default with a single object param for the input.
+0. check if the puzzle has a part two. If so, make sure you implement part one and on top of that implement part two. 
+1. {{paths.test}} should contain ALL the conditions stated in the puzzle to solve the puzzle (should test {{paths.solution}}). only use ES6 module style, jest. The tests should contain name day, part description
+2. {{paths.solution}} should contain the actual solution based on the input. It should export default with a single object param for the input. (export default function solution(input){...} )
 3. run.js to run the test, and if the test fails, it should create a new test/solution.
 4. If passed, it should create {{paths.solve}} that takes real input like the example.
+5. When everything is ready run {{paths.solve}} and save the output to {{paths.output}}
 
 {{paths.solve}} looks something like this:
 \`\`\`
 import fs from 'fs';
 import solution from '{{paths.solution}}';
 
-// This is the actual input
-const input = fs.readFileSync('{{paths.input}}', 'utf-8');
+// This is the actual input 
+const input = fs.readFileSync('{{paths.input}}', 'utf-8')
 
-// Here you should parse the input following the puzzle's description
-
-let parsedInput = ''; // Here will be the solution
-
-result = solution(parsedInput);
+result = solution(input);
 
 // Write here your solution
 
@@ -204,7 +244,7 @@ Think step by step:
           // Execute the corresponding tool function from useTools
           if (useTools[toolUse.name]) {
             spinner.start(`Executing tool: ${chalk.cyan(toolUse.name)}...`);
-            await useTools[toolUse.name]({...toolUse.input, day});
+            const toolResult = await useTools[toolUse.name]({...toolUse.input, day, part});
             spinner.succeed(`Tool ${chalk.cyan(toolUse.name)} executed successfully`);
 
             // Add the assistant's tool use message
@@ -240,6 +280,16 @@ Think step by step:
 
       // Final response from Claude after all tool uses
       console.log(chalk.green.bold('\n🎉 Solution Generation Complete!\n'));
+      
+      // Save response to summary.md
+      const summaryPath = path.join(process.cwd(), 'summary.md');
+      const summaryContent = response.content
+        .filter(block => block.type === 'text')
+        .map(block => block.text)
+        .join('\n\n');
+      fs.writeFileSync(summaryPath, summaryContent, 'utf8');
+      console.log(chalk.blue(`Summary saved to: ${summaryPath}`));
+
       console.log(chalk.yellow('Final response from Claude:'));
       response.content.forEach(block => {
         if (block.type === 'text') {
@@ -253,7 +303,12 @@ Think step by step:
   }
 
   await processToolUses();
+  // Close readline interface
+  rl.close();
 }
 
 // Start the process
-main();
+main().catch(error => {
+  console.error(chalk.red('Error:', error));
+  process.exit(1);
+});

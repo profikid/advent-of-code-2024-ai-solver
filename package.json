@@ -5,8 +5,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "start": "node ai.js",
+    "test": "node --no-deprecation --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "start": "node --no-deprecation ai.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
   },
   "author": "",

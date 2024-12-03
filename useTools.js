@@ -32,18 +32,19 @@ function runCommand(command, args) {
   }
 }
 
-function getFilePaths(day) {
+function getFilePaths(day, part = 1) {
   const solutionsDir = path.join(process.cwd(), 'solutions');
   const dayDir = path.join(solutionsDir, `day${day}`);
+  const partDir = path.join(dayDir, `part${part}`);
 
   return {
-    input: path.join(dayDir, 'input.txt'),
-    puzzle: path.join(dayDir, 'puzzle.md'),
-    screenshot: path.join(dayDir, 'puzzle.png'),
-    test: path.join(dayDir, 'test.js'),
-    solution: path.join(dayDir, 'solution.js'),
-    solve: path.join(dayDir, 'solve.js'),
-    output: path.join(dayDir, 'output.txt')
+    input: path.join(partDir, 'input.txt'),
+    puzzle: path.join(partDir, 'puzzle.md'),
+    screenshot: path.join(partDir, 'puzzle.png'),
+    test: path.join(partDir, 'test.js'),
+    solution: path.join(partDir, 'solution.js'),
+    solve: path.join(partDir, 'solve.js'),
+    output: path.join(partDir, 'output.txt')
   };
 }
 
@@ -53,7 +54,7 @@ export const useTools = {
     if (!input?.test_js) {
       throw new Error('No test_js data provided');
     }
-    const paths = getFilePaths(input.day || 1);
+    const paths = getFilePaths(input.day || 1, input.part || 1);
     writeFile(paths.test, input.test_js);
   },
 
@@ -61,7 +62,7 @@ export const useTools = {
     if (!input?.solution_js) {
       throw new Error('No solution_js data provided');
     }
-    const paths = getFilePaths(input.day || 1);
+    const paths = getFilePaths(input.day || 1, input.part || 1);
     writeFile(paths.solution, input.solution_js);
   },
 
@@ -69,13 +70,13 @@ export const useTools = {
     if (!input?.solve_js) {
       throw new Error('No solve_js data provided');
     }
-    const paths = getFilePaths(input.day || 1);
+    const paths = getFilePaths(input.day || 1, input.part || 1);
     writeFile(paths.solve, input.solve_js);
   },
 
   run_test: (input) => {
     console.log(chalk.blue('Running test...'));
-    const paths = getFilePaths(input.day || 1);
+    const paths = getFilePaths(input.day || 1, input.part || 1);
     runCommand(`node --experimental-vm-modules node_modules/jest/bin/jest.js ${paths.test}`, {
       cwd: process.cwd()  // Run from project root where node_modules is
     });
@@ -83,7 +84,7 @@ export const useTools = {
 
   run_solve: (input) => {
     console.log(chalk.blue('Running solve...'));
-    const paths = getFilePaths(input.day || 1);
+    const paths = getFilePaths(input.day || 1, input.part || 1);
     const solveDir = path.dirname(paths.solve);
     process.chdir(solveDir);  // Change to solve directory for relative paths
     runCommand(`node ${path.basename(paths.solve)}`, {
