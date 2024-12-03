@@ -9,37 +9,84 @@ import puppeteer from 'puppeteer';
 import TurndownService from 'turndown';
 import dotenv from 'dotenv';
 import readline from 'readline';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import { createInterface } from 'readline';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Load environment variables
 dotenv.config();
 
 const spinner = ora();
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
-// Create readline interface
-const rl = readline.createInterface({
+const rl = createInterface({
   input: process.stdin,
   output: process.stdout
 });
 
-// Promisify readline question
+async function promptForDayAndPart(defaultDay, defaultPart, defaultYear) {
+  let year = defaultYear;
+  if (!year) {
+    year = await question(chalk.blue('Enter the year (default: 2024): '));
+    if (!year) year = '2024';
+    if (isNaN(year) || year < 2015) {
+      console.log(chalk.red('Invalid year. Please enter a year 2015 or later.'));
+      rl.close();
+      process.exit(1);
+    }
+  }
+
+  let day = defaultDay;
+  if (!day) {
+    day = await question(chalk.blue('Enter the day number (1-25): '));
+    if (isNaN(day) || day < 1 || day > 25) {
+      console.log(chalk.red('Invalid day number. Please enter a number between 1 and 25.'));
+      rl.close();
+      process.exit(1);
+    }
+  }
+
+  let part = defaultPart;
+  if (!part) {
+    part = await question(chalk.blue('Enter the part number (1 or 2): '));
+    if (part !== '1' && part !== '2') {
+      console.log(chalk.red('Invalid part number. Please enter 1 or 2.'));
+      rl.close();
+      process.exit(1);
+    }
+  }
+
+  return { day: parseInt(day), part: parseInt(part), year: parseInt(year) };
+}
+
 const question = (query) => new Promise((resolve) => rl.question(query, resolve));
 
-async function promptForDayAndPart() {
-  const day = await question(chalk.blue('Enter the day number (1-25): '));
-  if (isNaN(day) || day < 1 || day > 25) {
-    console.log(chalk.red('Invalid day number. Please enter a number between 1 and 25.'));
-    rl.close();
-    process.exit(1);
+// Parse command line arguments
+function parseArgs() {
+  const args = process.argv.slice(2);
+  let day = null;
+  let part = null;
+  let year = null;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--day' && i + 1 < args.length) {
+      day = args[i + 1];
+      i++;
+    } else if (args[i] === '--part' && i + 1 < args.length) {
+      part = args[i + 1];
+      i++;
+    } else if (args[i] === '--year' && i + 1 < args.length) {
+      year = args[i + 1];
+      i++;
+    }
   }
 
-  const part = await question(chalk.blue('Enter the part number (1 or 2): '));
-  if (part !== '1' && part !== '2') {
-    console.log(chalk.red('Invalid part number. Please enter 1 or 2.'));
-    rl.close();
-    process.exit(1);
-  }
-
-  return { day: parseInt(day), part: parseInt(part) };
+  return { day, part, year };
 }
 
 // Create solutions directory if it doesn't exist
@@ -48,72 +95,83 @@ if (!fs.existsSync(solutionsDir)) {
   fs.mkdirSync(solutionsDir, { recursive: true });
 }
 
-async function extractPuzzleContent(day, part, paths) {
+async function extractPuzzleContent(day, part, year, paths) {
+  // Create year and day directories if they don't exist
+  const yearDir = path.join(solutionsDir, `year${year}`);
+  const dayDir = path.join(yearDir, `day${day}`);
+  const partDir = path.join(dayDir, `part${part}`);
+
+  fs.mkdirSync(yearDir, { recursive: true });
+  fs.mkdirSync(dayDir, { recursive: true });
+  fs.mkdirSync(partDir, { recursive: true });
+
   // Check if files already exist
   if (fs.existsSync(paths.input) && fs.existsSync(paths.puzzle)) {
     console.log(chalk.yellow('Input and puzzle files already exist, skipping extraction...'));
-    return {
-      input: fs.readFileSync(paths.input, 'utf-8'),
-      puzzle: fs.readFileSync(paths.puzzle, 'utf-8')
-    };
+    const input = fs.readFileSync(paths.input, 'utf-8');
+    const puzzle = fs.readFileSync(paths.puzzle, 'utf-8');
+    return { input, puzzle };
   }
 
   try {
-    spinner.start('Launching browser...');
     const browser = await puppeteer.launch({
       headless: 'new',
-      defaultViewport: null
+      args: ['--no-sandbox']
     });
-    const page = await browser.newPage();
-    spinner.succeed('Browser launched');
 
-    // Set the session cookie
-    spinner.start('Setting up session cookie...');
+    const page = await browser.newPage();
+
+    // Set cookie for authentication
+    const cookie = process.env.cookie;
+    if (!cookie) {
+      throw new Error('No cookie found in environment variables');
+    }
+
     await page.setCookie({
       name: 'session',
-      value: process.env.cookie?.replace(/"/g, '') || '', // Remove any quotes from the cookie value
+      value: cookie,
       domain: 'adventofcode.com',
-      path: '/',
-      expires: Math.floor(new Date('2026-01-01').getTime() / 1000),
-      httpOnly: true,
-      secure: true,
-      sameSite: 'Lax',
+      path: '/'
     });
-    spinner.succeed('Session cookie set');
 
     // Fetch the input text
     spinner.start('Fetching puzzle input...');
-    await page.goto(`https://adventofcode.com/2024/day/${day}/input`, { waitUntil: 'networkidle2' });
+    await page.goto(`https://adventofcode.com/${year}/day/${day}/input`, { waitUntil: 'networkidle2' });
     const inputText = await page.$eval('pre', el => el.textContent);
     spinner.succeed('Puzzle input fetched');
 
-    // Get the puzzle description
+    // Save input to file
+    fs.writeFileSync(paths.input, inputText);
+
+    // Fetch the puzzle description
     spinner.start('Fetching puzzle description...');
-    await page.goto(`https://adventofcode.com/2024/day/${day}#part${part}`, { waitUntil: 'networkidle2' });
+    await page.goto(`https://adventofcode.com/${year}/day/${day}#part${part}`, { waitUntil: 'networkidle2' });
     await page.waitForSelector('article');
     const articleHTML = await page.$eval('main', el => el.innerHTML);
     spinner.succeed('Puzzle description fetched');
 
+    // Take screenshot of the puzzle
+    await page.screenshot({
+      path: paths.screenshot,
+      fullPage: true
+    });
+
     // Convert HTML to Markdown
-    spinner.start('Converting puzzle description to markdown...');
     const turndownService = new TurndownService();
     const markdown = turndownService.turndown(articleHTML);
-    spinner.succeed('Puzzle description converted');
 
-    // Save the content
-    fs.writeFileSync(paths.input, inputText);
+    // Save markdown to file
     fs.writeFileSync(paths.puzzle, markdown);
-    spinner.start('Taking screenshot...');
-    await page.screenshot({ path: paths.screenshot, fullPage: true });
-    spinner.succeed('Screenshot saved');
 
-    return { input: inputText, puzzle: markdown };
+    await browser.close();
+
+    return {
+      input: inputText,
+      puzzle: markdown
+    };
   } catch (error) {
-    spinner.fail('Error extracting puzzle content');
-    console.error(chalk.red(error));
-    process.exit(1);
-  } finally {
-    // await browser.close();
+    spinner.fail(`Error extracting puzzle content: ${error.message}`);
+    throw error;
   }
 }
 
@@ -125,23 +183,15 @@ async function loadFile(filepath, description) {
 }
 
 async function main() {
-  // Get day and part from user
-  const { day, part } = await promptForDayAndPart();
-  console.log(chalk.blue.bold(`\n🎄 Advent of Code - Day ${day}, Part ${part}\n`));
+  // Get day, part, and year from command line or prompt
+  const { day: argDay, part: argPart, year: argYear } = parseArgs();
+  const { day, part, year } = await promptForDayAndPart(argDay, argPart, argYear);
+  console.log(chalk.blue.bold(`\n🎄 Advent of Code ${year} - Day ${day}, Part ${part}\n`));
 
-  // Create solutions directory if it doesn't exist
-  const solutionsDir = path.join(process.cwd(), 'solutions');
-  if (!fs.existsSync(solutionsDir)) {
-    fs.mkdirSync(solutionsDir, { recursive: true });
-  }
-
-  // Define paths for day's files
-  const dayDir = path.join(solutionsDir, `day${day}`);
+  // Get file paths
+  const yearDir = path.join(solutionsDir, `year${year}`);
+  const dayDir = path.join(yearDir, `day${day}`);
   const partDir = path.join(dayDir, `part${part}`);
-  if (!fs.existsSync(partDir)) {
-    fs.mkdirSync(partDir, { recursive: true });
-  }
-
   const paths = {
     input: path.join(partDir, 'input.txt'),
     puzzle: path.join(partDir, 'puzzle.md'),
@@ -154,15 +204,11 @@ async function main() {
 
   // First extract the puzzle content
   console.log(chalk.yellow('\n📥 Extracting puzzle content...\n'));
-  const { input, puzzle } = await extractPuzzleContent(day, part, paths);
+  const { input, puzzle } = await extractPuzzleContent(day, part, year, paths);
 
   // Then load the files and solve the puzzle
   console.log(chalk.yellow('\n🚀 Starting solution generation...\n'));
   
-  const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
   function replaceVariables(template, variables) {
     return template.replace(/{{\s*(\w+)\s*}}/g, (match, key) => {
       return key in variables ? variables[key] : match;
@@ -172,6 +218,7 @@ async function main() {
   const vars = {
     day,
     part,
+    year,
     input: input.slice(0, 200),
     paths: {
       input: paths.input,
@@ -186,9 +233,11 @@ async function main() {
     model: 'claude-3-5-sonnet-20241022',
     max_tokens: 8192,
     tools,
-    temperature: 0,
+    temperature: 0.4,
     system: replaceVariables(
       `You are a professional JavaScript puzzle solver. Your goal is to create a test, a solution, and solve the puzzle.
+      you are a very careful programmer that writes code that is clean and will take care for undefined, out of bound etc.
+      Ensure you go over every step of the puzzle before writing the code.
 0. check if the puzzle has a part two. If so, make sure you implement part one and on top of that implement part two. 
 1. {{paths.test}} should contain ALL the conditions stated in the puzzle to solve the puzzle (should test {{paths.solution}}). only use ES6 module style, jest. The tests should contain name day, part description
 2. {{paths.solution}} should contain the actual solution based on the input. It should export default with a single object param for the input. (export default function solution(input){...} )
@@ -215,7 +264,7 @@ An excerpt of {{paths.input}}:
 {{input}}
 
 The puzzle always contains example data and answer.
-Think step by step:
+Think step by step, If you got it right the first time you get $1000 dollars! and we pay of the mortgage of your mom
 `,
       vars
     ),
@@ -244,7 +293,7 @@ Think step by step:
           // Execute the corresponding tool function from useTools
           if (useTools[toolUse.name]) {
             spinner.start(`Executing tool: ${chalk.cyan(toolUse.name)}...`);
-            const toolResult = await useTools[toolUse.name]({...toolUse.input, day, part});
+            const toolResult = await useTools[toolUse.name]({...toolUse.input, day, part, year});
             spinner.succeed(`Tool ${chalk.cyan(toolUse.name)} executed successfully`);
 
             // Add the assistant's tool use message

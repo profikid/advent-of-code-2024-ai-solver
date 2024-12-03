@@ -11,7 +11,7 @@ export default [
             }
           },
           "required": [
-            "test.js"
+            "test_js"
           ]
         }
       },
@@ -49,11 +49,25 @@ export default [
       },
       {
         "name": "run_test",
-        "description": "A should run the test after solution.js and test.js are created",
+        "description": "Run the test file to verify the solution",
         "input_schema": {
           "type": "object",
-          "properties": {},
-          "required": []
+          "properties": {
+            "day": {
+              "type": "number",
+              "description": "The day number of the puzzle"
+            },
+            "part": {
+              "type": "number",
+              "description": "The part number of the puzzle (1 or 2)"
+            },
+            "skip": {
+              "type": "boolean",
+              "description": "If true, skip running the test",
+              "default": false
+            }
+          },
+          "required": ["day", "part"]
         }
       },
       {
