@@ -32,42 +32,62 @@ function runCommand(command, args) {
   }
 }
 
+function getFilePaths(day) {
+  const solutionsDir = path.join(process.cwd(), 'solutions');
+  const dayDir = path.join(solutionsDir, `day${day}`);
+
+  return {
+    input: path.join(dayDir, 'input.txt'),
+    puzzle: path.join(dayDir, 'puzzle.md'),
+    screenshot: path.join(dayDir, 'puzzle.png'),
+    test: path.join(dayDir, 'test.js'),
+    solution: path.join(dayDir, 'solution.js'),
+    solve: path.join(dayDir, 'solve.js'),
+    output: path.join(dayDir, 'output.txt')
+  };
+}
+
 // Tools object containing all tool functions
 export const useTools = {
   create_test: (input) => {
     if (!input?.test_js) {
       throw new Error('No test_js data provided');
     }
-    writeFile(input.path || path.join('solutions', 'day1', 'test.js'), input.test_js);
+    const paths = getFilePaths(input.day || 1);
+    writeFile(paths.test, input.test_js);
   },
 
   create_solution: (input) => {
     if (!input?.solution_js) {
       throw new Error('No solution_js data provided');
     }
-    writeFile(input.path || path.join('solutions', 'day1', 'solution.js'), input.solution_js);
+    const paths = getFilePaths(input.day || 1);
+    writeFile(paths.solution, input.solution_js);
   },
 
   create_solve: (input) => {
     if (!input?.solve_js) {
       throw new Error('No solve_js data provided');
     }
-    writeFile(input.path || path.join('solutions', 'day1', 'solve.js'), input.solve_js);
+    const paths = getFilePaths(input.day || 1);
+    writeFile(paths.solve, input.solve_js);
   },
 
   run_test: (input) => {
     console.log(chalk.blue('Running test...'));
-    const testPath = input?.path || path.join('solutions', 'day1', 'test.js');
-    runCommand(`node --experimental-vm-modules node_modules/jest/bin/jest.js ${testPath}`, {
+    const paths = getFilePaths(input.day || 1);
+    runCommand(`node --experimental-vm-modules node_modules/jest/bin/jest.js ${paths.test}`, {
       cwd: process.cwd()  // Run from project root where node_modules is
     });
   },
 
   run_solve: (input) => {
     console.log(chalk.blue('Running solve...'));
-    const solvePath = input?.path || path.join('solutions', 'day1', 'solve.js');
-    runCommand(`node ${solvePath}`, {
-      cwd: process.cwd()  // Run from project root for consistent paths
+    const paths = getFilePaths(input.day || 1);
+    const solveDir = path.dirname(paths.solve);
+    process.chdir(solveDir);  // Change to solve directory for relative paths
+    runCommand(`node ${path.basename(paths.solve)}`, {
+      cwd: solveDir
     });
   },
 };

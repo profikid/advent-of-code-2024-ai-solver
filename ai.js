@@ -204,7 +204,7 @@ Think step by step:
           // Execute the corresponding tool function from useTools
           if (useTools[toolUse.name]) {
             spinner.start(`Executing tool: ${chalk.cyan(toolUse.name)}...`);
-            await useTools[toolUse.name](toolUse.input);
+            await useTools[toolUse.name]({...toolUse.input, day});
             spinner.succeed(`Tool ${chalk.cyan(toolUse.name)} executed successfully`);
 
             // Add the assistant's tool use message
