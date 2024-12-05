@@ -28,19 +28,6 @@ while true; do
   if [ $ai_exit_code -eq 0 ]; then
     echo -e "\n 'ai.js' completed successfully. Submitting answer..."
     
-    # Run submit.js with the same arguments
-    node submit.js --day "$day" --part "$part" --year "$year"
-    submit_exit_code=$?
-    
-    if [ $submit_exit_code -eq 0 ]; then
-      echo -e "\n Answer submitted successfully!"
-      exit 0
-    else
-      echo -e "\n Submit failed. Waiting 1 minute before restarting..."
-      sleep 60
-      echo -e "Restarting AI process..."
-      continue
-    fi
   else
     echo -e "\n 'node ai.js' crashed with exit code $?. Restarting in 1 second..." >&2
     sleep 1

@@ -24,6 +24,7 @@ function runCommand(command, args) {
       ...args
     });
     console.log(chalk.green(result));
+    return result;
   } catch (error) {
     console.error(chalk.red(`Error: ${error.message}`));
     if (error.stdout) console.error(chalk.yellow('Output:', error.stdout));
@@ -96,13 +97,26 @@ export const useTools = {
     console.log(chalk.blue('Running solve...'));
     const paths = getFilePaths(input.day || 1, input.part || 1, input.year || 2024);
     const solveDir = path.dirname(paths.solve);
-    process.chdir(solveDir);  // Change to solve directory for relative paths
+    const projectRoot = process.cwd();
+    
     try {
+      // Run solve.js
+      process.chdir(solveDir);  // Change to solve directory for relative paths
       runCommand(`node ${path.basename(paths.solve)}`, {
         cwd: solveDir
       });
+      
+      // Change back to project root for submit.sh
+      process.chdir(projectRoot);
+      
+      // Run submit.sh with the same parameters
+      console.log(chalk.blue('\nSubmitting solution...'));
+      runCommand(`./submit.sh -d ${input.day || 1} -p ${input.part || 1} -y ${input.year || 2024}`, {
+        cwd: projectRoot
+      });
+      
     } catch (error) {
-      console.error(chalk.red(`Solve failed with error: ${error.message}`));
+      console.error(chalk.red(`Process failed with error: ${error.message}`));
       process.exit(1);
     }
   }

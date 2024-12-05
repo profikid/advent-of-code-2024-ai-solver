@@ -233,7 +233,7 @@ async function main() {
     model: 'claude-3-5-sonnet-20241022',
     max_tokens: 8192,
     tools,
-    temperature: 0.4,
+    temperature: 1,
     system: replaceVariables(
       `You are a professional JavaScript puzzle solver. Your goal is to create a test, a solution, and solve the puzzle.
       you are a very careful programmer that writes code that is clean and will take care for undefined, out of bound etc.
@@ -243,7 +243,7 @@ async function main() {
 2. {{paths.solution}} should contain the actual solution based on the input. It should export default with a single object param for the input. (export default function solution(input){...} )
 3. run.js to run the test, and if the test fails, it should create a new test/solution.
 4. If passed, it should create {{paths.solve}} that takes real input like the example.
-5. When everything is ready run {{paths.solve}} and save the output to {{paths.output}}
+5. When everything is ready run {{paths.solve}} and save the output to {{paths.output}}, if this fails only recreate the solve
 
 {{paths.solve}} looks something like this:
 \`\`\`
@@ -252,6 +252,8 @@ import solution from '{{paths.solution}}';
 
 // This is the actual input 
 const input = fs.readFileSync('{{paths.input}}', 'utf-8')
+
+// carefully parse the input so it will work in the solution
 
 result = solution(input);
 
@@ -265,6 +267,7 @@ An excerpt of {{paths.input}}:
 
 The puzzle always contains example data and answer.
 Think step by step, If you got it right the first time you get $1000 dollars! and we pay of the mortgage of your mom
+Todays puzzle is day {{day}} part {{part}. Only write the answer of the current part!
 `,
       vars
     ),
