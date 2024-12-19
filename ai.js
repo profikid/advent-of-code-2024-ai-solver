@@ -239,19 +239,19 @@ async function main() {
       you are a very careful programmer that writes code that is clean and will take care for undefined, out of bound etc.
       Ensure you go over every step of the puzzle before writing the code.
 0. check if the puzzle has a part two. If so, make sure you implement part one and on top of that implement part two. 
-1. {{paths.test}} should contain ALL the conditions stated in the puzzle to solve the puzzle (should test {{paths.solution}}). only use ES6 module style, jest. The tests should contain name day, part description
+1. {{paths.test}} should contain ALL the conditions stated in the puzzle to solve the puzzle (should test {{paths.solution}}). only use ES6 module style, jest. The tests should contain name day, part description, and should be stable
 2. {{paths.solution}} should contain the actual solution based on the input. It should export default with a single object param for the input. (export default function solution(input){...} )
 3. run.js to run the test, and if the test fails, it should create a new test/solution.
 4. If passed, it should create {{paths.solve}} that takes real input like the example.
-5. When everything is ready run {{paths.solve}} and save the output to {{paths.output}}, if this fails only recreate the solve
+5. When everything is ready run solve and save the output to output.txt, if this fails only recreate the solve
 
-{{paths.solve}} looks something like this:
+solve.js looks something like this:
 \`\`\`
 import fs from 'fs';
-import solution from '{{paths.solution}}';
+import solution from './solution.js';
 
 // This is the actual input 
-const input = fs.readFileSync('{{paths.input}}', 'utf-8')
+const input = fs.readFileSync('./input.txt', 'utf-8')
 
 // carefully parse the input so it will work in the solution
 
@@ -259,7 +259,7 @@ result = solution(input);
 
 // Write here your solution
 
-fs.writeFileSync('{{paths.output}}', result);
+fs.writeFileSync('./output.txt', result);
 \`\`\`
 
 An excerpt of {{paths.input}}:

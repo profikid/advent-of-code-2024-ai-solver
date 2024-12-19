@@ -20,16 +20,38 @@ while getopts "d:p:y:" opt; do
   esac
 done
 
-while true; do
-  # Run the AI script with the provided arguments
-  node ai.js --day "$day" --part "$part" --year "$year"
-  ai_exit_code=$?
-  
-  if [ $ai_exit_code -eq 0 ]; then
-    echo -e "\n 'ai.js' completed successfully. Submitting answer..."
-    
-  else
-    echo -e "\n 'node ai.js' crashed with exit code $?. Restarting in 1 second..." >&2
+# Function to wait until a specific time
+wait_until_time() {
+  target_time="14:00"
+  echo "Waiting until $target_time..."
+  while [ "$(date +%H:%M)" != "$target_time" ]; do
     sleep 1
-  fi
-done
+  done
+  echo "It's $target_time! Starting the script..."
+}
+
+# Function to run a command until it succeeds
+run_until_success() {
+  local cmd=$1
+  local retries=0
+  local max_retries=10  # Set a maximum number of retries to avoid infinite loops
+
+  while ! eval "$cmd"; do
+    retries=$((retries + 1))
+    echo "Command failed: $cmd. Retrying... ($retries/$max_retries)"
+    if [ $retries -ge $max_retries ]; then
+      echo "Exceeded maximum retries. Exiting with failure."
+      exit 1
+    fi
+    sleep 2  # Optional: wait 2 seconds before retrying
+  done
+}
+
+# Wait until 14:00
+wait_until_time
+
+# Run the AI script with the provided arguments
+run_until_success "node ai.js --day '$day' --part 1 --year '$year'"
+run_until_success "node ai.js --day '$day' --part 2 --year '$year'"
+
+echo "Both parts completed successfully!"
