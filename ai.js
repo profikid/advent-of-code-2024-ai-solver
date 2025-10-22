@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import Cerebras from '@cerebras/cerebras_cloud_sdk';
 import tools from './tools.js';
 import { useTools } from './useTools.js';
 import fs from 'fs';
@@ -20,8 +20,8 @@ const __dirname = dirname(__filename);
 dotenv.config();
 
 const spinner = ora();
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+const cerebras = new Cerebras({
+  apiKey: process.env.CEREBRAS_API_KEY,
 });
 
 const rl = createInterface({
@@ -229,12 +229,7 @@ async function main() {
     }
   };
 
-  let payload = {
-    model: 'claude-3-5-sonnet-20241022',
-    max_tokens: 8192,
-    tools,
-    temperature: 1,
-    system: replaceVariables(
+  const systemPrompt = replaceVariables(
       `You are a professional JavaScript puzzle solver. Your goal is to create a test, a solution, and solve the puzzle.
       you are a very careful programmer that writes code that is clean and will take care for undefined, out of bound etc.
       Ensure you go over every step of the puzzle before writing the code.
@@ -270,87 +265,93 @@ Think step by step, If you got it right the first time you get $1000 dollars! an
 Todays puzzle is day {{day}} part {{part}. Only write the answer of the current part!
 `,
       vars
-    ),
+    );
+
+  let payload = {
+    model: 'llama-4-scout-17b-16e-instruct',
+    max_tokens: 8192,
+    tools,
+    temperature: 1,
+    parallel_tool_calls: false,
     messages: [
       {
+        role: 'system',
+        content: systemPrompt,
+      },
+      {
         role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: puzzle,
-          },
-        ],
+        content: puzzle,
       },
     ],
   };
 
   async function processToolUses() {
     try {
-      spinner.start('Generating solution with Claude...');
-      let response = await anthropic.messages.create(payload);
-      spinner.succeed('Received initial response from Claude');
+      spinner.start('Generating solution with Cerebras...');
+      let response = await cerebras.chat.completions.create(payload);
+      spinner.succeed('Received initial response from Cerebras');
 
-      while (response.stop_reason === 'tool_use') {
-        const toolUse = response.content.find((block) => block.type === 'tool_use');
-        if (toolUse) {
+      // OpenAI format: check for tool_calls in response.choices[0].message
+      while (response.choices[0].finish_reason === 'tool_calls') {
+        const message = response.choices[0].message;
+        const toolCall = message.tool_calls?.[0]; // Get first tool call (parallel_tool_calls is false)
+
+        if (toolCall && toolCall.type === 'function') {
+          const toolName = toolCall.function.name;
+          const toolArgs = JSON.parse(toolCall.function.arguments);
+
           // Execute the corresponding tool function from useTools
-          if (useTools[toolUse.name]) {
-            spinner.start(`Executing tool: ${chalk.cyan(toolUse.name)}...`);
-            const toolResult = await useTools[toolUse.name]({...toolUse.input, day, part, year});
-            spinner.succeed(`Tool ${chalk.cyan(toolUse.name)} executed successfully`);
+          if (useTools[toolName]) {
+            spinner.start(`Executing tool: ${chalk.cyan(toolName)}...`);
+            const toolResult = await useTools[toolName]({...toolArgs, day, part, year});
+            spinner.succeed(`Tool ${chalk.cyan(toolName)} executed successfully`);
 
-            // Add the assistant's tool use message
+            // Add the assistant's message with tool calls
             payload.messages.push({
               role: 'assistant',
-              content: [toolUse],
+              content: message.content || '',
+              tool_calls: message.tool_calls,
             });
 
-            // Add the tool result as a user message
+            // Add the tool result as a tool message
             payload.messages.push({
-              role: 'user',
-              content: [
-                {
-                  type: 'tool_result',
-                  tool_use_id: toolUse.id,
-                },
-              ],
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ success: true, result: toolResult }),
             });
 
-            // Send the updated messages back to Claude
-            spinner.start('Getting next step from Claude...');
-            response = await anthropic.messages.create(payload);
-            spinner.succeed('Received next step from Claude');
+            // Send the updated messages back to Cerebras
+            spinner.start('Getting next step from Cerebras...');
+            response = await cerebras.chat.completions.create(payload);
+            spinner.succeed('Received next step from Cerebras');
           } else {
-            spinner.fail(`Tool ${chalk.red(toolUse.name)} not found in useTools.`);
+            spinner.fail(`Tool ${chalk.red(toolName)} not found in useTools.`);
             break;
           }
         } else {
-          spinner.fail('No tool_use block found in the response.');
+          spinner.fail('No tool_calls found in the response.');
           break;
         }
       }
 
-      // Final response from Claude after all tool uses
+      // Final response from Cerebras after all tool uses
       console.log(chalk.green.bold('\n🎉 Solution Generation Complete!\n'));
-      
+
       // Save response to summary.md
       const summaryPath = path.join(process.cwd(), 'summary.md');
-      const summaryContent = response.content
-        .filter(block => block.type === 'text')
-        .map(block => block.text)
-        .join('\n\n');
+      const finalMessage = response.choices[0].message;
+      const summaryContent = finalMessage.content || '';
       fs.writeFileSync(summaryPath, summaryContent, 'utf8');
       console.log(chalk.blue(`Summary saved to: ${summaryPath}`));
 
-      console.log(chalk.yellow('Final response from Claude:'));
-      response.content.forEach(block => {
-        if (block.type === 'text') {
-          console.log(chalk.white(block.text));
-        }
-      });
+      console.log(chalk.yellow('Final response from Cerebras:'));
+      console.log(chalk.white(summaryContent));
     } catch (error) {
       spinner.fail('Error processing tool uses:');
       console.error(chalk.red(error));
+      if (error.response) {
+        console.error(chalk.red('Response data:'), error.response.data);
+      }
     }
   }
 
